@@ -49,6 +49,7 @@
         cursor: pointer;
         margin-top: -5px;
         padding: 0;
+        width: auto;
       }
       #close-sidebar:hover {
         color: white;
@@ -144,6 +145,8 @@
         z-index: 1000;
         font-size: 14px;
         font-weight: bold;
+        width: auto;
+        text-align: left;
       }
 
       /* --- Легенда --- */
@@ -237,7 +240,7 @@
     <button id="toggle-sidebar">☰ Настройки</button>
 
     <div id="sidebar">
-      <button id="close-sidebar">✖</button>
+      <button id="close-sidebar" title="Закрыть меню">✖</button>
       <h2 style="margin-top: 0">Анализатор</h2>
 
       <div class="control-group">
@@ -332,6 +335,10 @@
       const statsEl = document.getElementById("stats");
 
       function log(msg) {
+        // Ограничим лог 1000 символами, чтобы не вешать браузер при огромных лорбуках
+        if (logEl.textContent.length > 5000) {
+          logEl.textContent = logEl.textContent.slice(-2500);
+        }
         logEl.textContent += `\n${msg}`;
         logEl.scrollTop = logEl.scrollHeight;
       }
@@ -340,8 +347,20 @@
         return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       }
 
+      // Обработчик выбора файла: сразу пишем в лог названия выбранных лорбуков
       fileInput.addEventListener("change", (e) => {
-        processBtn.disabled = e.target.files.length === 0;
+        const files = e.target.files;
+        processBtn.disabled = files.length === 0;
+
+        if (files.length > 0) {
+          log(`\n📁 Выбрано файлов: ${files.length}`);
+          for (let i = 0; i < files.length; i++) {
+            log(` - ${files[i].name}`);
+          }
+          log("Готово к построению графа.");
+        } else {
+          log("🚫 Файлы не выбраны.");
+        }
       });
 
       processBtn.addEventListener("click", async () => {
@@ -425,6 +444,7 @@
               : globalCaseMatch;
 
           let searchPatterns = [];
+          // Регулярка для определения regex паттернов вида /.../g
           let isRegexFormat = /^\/(.+)\/([a-z]*)$/;
 
           for (let k of keys) {
@@ -607,7 +627,6 @@
         drawNetwork(nodesData, edgesData);
       }
 
-      // --- Отрисовка в Vis.js ---
       function drawNetwork(nodesRaw, edgesRaw) {
         log("Отрисовка графа...");
         const container = document.getElementById("network");
@@ -628,9 +647,8 @@
           physics: {
             enabled: true,
             barnesHut: {
-              // ИЗМЕНЕНА ФИЗИКА: Уменьшаем разлет узлов
-              gravitationalConstant: -800, // Было -1500 (чем ближе к 0, тем слабее отталкивание)
-              centralGravity: 0.4, // Было 0.2 (чем выше, тем сильнее тянет в центр)
+              gravitationalConstant: -800,
+              centralGravity: 0.4,
               springLength: 150,
               springConstant: 0.05,
               damping: 0.09,
