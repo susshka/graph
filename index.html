@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Анализатор Лорбуков (Web)</title>
-    <!-- Подключаем библиотеку Vis-Network -->
     <script
       type="text/javascript"
       src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
@@ -27,7 +26,6 @@
         height: 100vh;
       }
 
-      /* --- Меню настроек --- */
       #sidebar {
         width: 350px;
         background: #111;
@@ -117,7 +115,6 @@
         color: #aaa;
       }
 
-      /* --- Область графа --- */
       #graph-container {
         flex-grow: 1;
         position: relative;
@@ -130,7 +127,6 @@
         outline: none;
       }
 
-      /* Кнопка открытия меню (для мобилок) */
       #toggle-sidebar {
         display: none;
         position: absolute;
@@ -149,7 +145,6 @@
         text-align: left;
       }
 
-      /* --- Легенда --- */
       .legend {
         position: absolute;
         top: 15px;
@@ -196,9 +191,8 @@
         transform: rotate(180deg);
       }
 
-      /* --- КАСТОМНЫЙ HTML ТУЛТИП --- */
       #custom-tooltip {
-        position: fixed; /* Фиксируем относительно окна браузера! */
+        position: fixed;
         display: none;
         background-color: rgba(15, 15, 15, 0.95);
         color: #fff;
@@ -208,9 +202,8 @@
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
         pointer-events: none;
         z-index: 3000;
-        /* Адаптивная ширина */
         width: max-content;
-        max-width: min(400px, 90vw); /* Не больше 400px или 90% экрана */
+        max-width: min(400px, 90vw);
         font-size: 13px;
         line-height: 1.4;
         word-wrap: break-word;
@@ -230,7 +223,6 @@
         color: #ddd;
       }
 
-      /* --- АДАПТИВНОСТЬ (Смартфоны) --- */
       @media (max-width: 768px) {
         #sidebar {
           position: absolute;
@@ -306,7 +298,6 @@
     <div id="graph-container">
       <div id="network"></div>
       <div id="custom-tooltip"></div>
-      <!-- Наш тултип -->
 
       <div class="legend" id="legend">
         <div class="legend-header" id="legend-toggle">
@@ -342,7 +333,6 @@
     </div>
 
     <script>
-      // --- Логика Адаптивного интерфейса ---
       const sidebar = document.getElementById("sidebar");
       const btnToggleSidebar = document.getElementById("toggle-sidebar");
       const btnCloseSidebar = document.getElementById("close-sidebar");
@@ -365,7 +355,6 @@
         legend.classList.toggle("collapsed");
       });
 
-      // --- Логика приложения ---
       const fileInput = document.getElementById("fileInput");
       const processBtn = document.getElementById("processBtn");
       const logEl = document.getElementById("log");
@@ -379,8 +368,20 @@
         logEl.scrollTop = logEl.scrollHeight;
       }
 
+      // Экранирование для regex
       function escapeRegExp(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      // Экранирование HTML, чтобы теги < > & " ' не ломали подсказки
+      function escapeHTML(str) {
+        if (str === null || str === undefined) return "";
+        return String(str)
+          .replace(/&/g, "&" + "amp;")
+          .replace(/</g, "&" + "lt;")
+          .replace(/>/g, "&" + "gt;")
+          .replace(/"/g, "&" + "quot;")
+          .replace(/'/g, "&" + "#39;");
       }
 
       fileInput.addEventListener("change", (e) => {
@@ -450,7 +451,6 @@
         processBtn.disabled = false;
       });
 
-      // --- Логика построения графа ---
       function buildGraph(entriesMap) {
         log("Подготовка ключей и параметров...");
         const globalMatchWhole =
@@ -525,7 +525,6 @@
             allKeysSet: new Set(keys),
           });
 
-          // Настройка визуализации ноды
           let baseColor = entry.constant
             ? "#3498db"
             : entry.vectorized
@@ -566,23 +565,25 @@
               ? 25
               : 20;
 
-          // Обрабатываем content: меняем \n на <br> и обрезаем, если слишком длинный
-          let formattedContent = content.replace(/\n/g, "<br>");
-          if (formattedContent.length > 500) {
-            formattedContent = formattedContent.substring(0, 500) + "...";
+          // Экранируем ключи и текст
+          let safeKeysText = keys.map((k) => escapeHTML(k)).join(", ") || "Нет";
+
+          let safeContent = escapeHTML(content);
+          safeContent = safeContent.replace(/\n/g, "<br>"); // Превращаем энтеры в HTML-переносы
+          if (safeContent.length > 500) {
+            safeContent = safeContent.substring(0, 500) + "...";
           }
 
+          // Формируем HTML для нашего кастомного окошка
           let customHTML = `
-                <h4>${comment}</h4>
-                <b>Источник:</b> ${entry.source_file}<br><br>
-                <b>Ключевые слова:</b><br>
-                <span style="color: #aaa;">${
-                  keys.join(", ") || "Нет"
-                }</span><br><br>
-                <b>Содержание:</b><br>
-                <div style="color: #ddd; margin-top:5px; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px;">
-                    ${formattedContent}
-                </div>`;
+                  <h4>${escapeHTML(comment)}</h4>
+                  <b>Источник:</b> ${escapeHTML(entry.source_file)}<br><br>
+                  <b>Ключевые слова:</b><br>
+                  <span style="color: #aaa;">${safeKeysText}</span><br><br>
+                  <b>Содержание:</b><br>
+                  <div style="color: #ddd; margin-top:5px; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                      ${safeContent}
+                  </div>`;
 
           nodesData.push({
             id: uid,
@@ -619,7 +620,9 @@
                     to: nodeB.uid,
                     color: "#3498db",
                     arrows: "to",
-                    customTooltip: `Ключ <br><b style="color:var(--accent-color)">${p.original}</b><br> из записи A найден в тексте записи B.`,
+                    customTooltip: `Ключ <br><b style="color:var(--accent-color)">${escapeHTML(
+                      p.original
+                    )}</b><br> из записи A найден в тексте записи B.`,
                   });
                   connectionCount++;
                   break;
@@ -635,7 +638,9 @@
                     to: nodeA.uid,
                     color: "#3498db",
                     arrows: "to",
-                    customTooltip: `Ключ <br><b style="color:var(--accent-color)">${p.original}</b><br> из записи B найден в тексте записи A.`,
+                    customTooltip: `Ключ <br><b style="color:var(--accent-color)">${escapeHTML(
+                      p.original
+                    )}</b><br> из записи B найден в тексте записи A.`,
                   });
                   connectionCount++;
                   break;
@@ -670,12 +675,10 @@
         drawNetwork(nodesData, edgesData);
       }
 
-      // --- Отрисовка в Vis.js ---
-      let networkInstance = null; // Глобально сохраняем канвас
+      let networkInstance = null;
       let lastMouseX = 0;
       let lastMouseY = 0;
 
-      // Глобальное отслеживание мыши (надежнее, чем внутри канваса)
       document.addEventListener("mousemove", (e) => {
         lastMouseX = e.clientX;
         lastMouseY = e.clientY;
@@ -686,30 +689,25 @@
         const tooltip = document.getElementById("custom-tooltip");
         if (tooltip.style.display !== "block") return;
 
-        // Временно делаем прозрачным для корректного замера размеров
         tooltip.style.visibility = "hidden";
 
         const tooltipWidth = tooltip.offsetWidth;
         const tooltipHeight = tooltip.offsetHeight;
 
-        const offset = 15; // Отступ от курсора
+        const offset = 15;
         let left = lastMouseX + offset;
         let top = lastMouseY + offset;
 
         const windowWidth = window.innerWidth;
         const windowHeight = window.innerHeight;
 
-        // Если вылезает справа - перемещаем влево от курсора
         if (left + tooltipWidth > windowWidth - 10) {
           left = lastMouseX - tooltipWidth - offset;
-          // Если слишком велико и слева не влезает - прибиваем к левому краю
           if (left < 10) left = 10;
         }
 
-        // Если вылезает снизу - перемещаем вверх от курсора
         if (top + tooltipHeight > windowHeight - 10) {
           top = lastMouseY - tooltipHeight - offset;
-          // Если сверху не влезает - прибиваем к верху
           if (top < 10) top = 10;
         }
 
@@ -759,11 +757,9 @@
         networkInstance = new vis.Network(container, data, options);
         const tooltip = document.getElementById("custom-tooltip");
 
-        // Показ тултипа для Узлов
         networkInstance.on("hoverNode", function (params) {
           const nodeData = nodesDataSet.get(params.node);
           if (nodeData && nodeData.customTooltip) {
-            // Если мы на мобилке (или мышка не сдвинулась), vis.js возвращает координаты в event
             if (params.event && params.event.clientX) {
               lastMouseX = params.event.clientX;
               lastMouseY = params.event.clientY;
@@ -774,7 +770,6 @@
           }
         });
 
-        // Показ тултипа для Связей (Граней)
         networkInstance.on("hoverEdge", function (params) {
           const edgeData = edgesDataSet.get(params.edge);
           if (edgeData && edgeData.customTooltip) {
@@ -788,7 +783,6 @@
           }
         });
 
-        // Скрытие тултипа
         networkInstance.on("blurNode", function () {
           tooltip.style.display = "none";
         });
@@ -796,7 +790,6 @@
           tooltip.style.display = "none";
         });
 
-        // Для мобилок - скрытие по клику на пустое место
         networkInstance.on("click", function (params) {
           if (params.nodes.length === 0 && params.edges.length === 0) {
             tooltip.style.display = "none";
