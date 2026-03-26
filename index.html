@@ -68,7 +68,6 @@
         padding-bottom: 5px;
       }
 
-      /* Кнопки и инпуты */
       button,
       input[type="file"]::file-selector-button {
         background-color: var(--accent-color);
@@ -128,6 +127,7 @@
       #network {
         width: 100%;
         height: 100%;
+        outline: none;
       }
 
       /* Кнопка открытия меню (для мобилок) */
@@ -180,7 +180,7 @@
         padding: 0 15px 15px 15px;
         font-size: 12px;
         overflow-y: auto;
-        display: block; /* Раскрыта на ПК */
+        display: block;
       }
 
       .legend.collapsed .legend-content {
@@ -196,11 +196,45 @@
         transform: rotate(180deg);
       }
 
-      /* --- АДАПТИВНОСТЬ (Смартфоны и планшеты) --- */
+      /* --- КАСТОМНЫЙ HTML ТУЛТИП --- */
+      #custom-tooltip {
+        position: fixed; /* Фиксируем относительно окна браузера! */
+        display: none;
+        background-color: rgba(15, 15, 15, 0.95);
+        color: #fff;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #555;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        pointer-events: none;
+        z-index: 3000;
+        /* Адаптивная ширина */
+        width: max-content;
+        max-width: min(400px, 90vw); /* Не больше 400px или 90% экрана */
+        font-size: 13px;
+        line-height: 1.4;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
+      }
+
+      #custom-tooltip h4 {
+        margin: 0 0 10px 0;
+        color: var(--accent-color);
+        font-size: 16px;
+        border-bottom: 1px solid #444;
+        padding-bottom: 5px;
+      }
+
+      #custom-tooltip b {
+        color: #ddd;
+      }
+
+      /* --- АДАПТИВНОСТЬ (Смартфоны) --- */
       @media (max-width: 768px) {
         #sidebar {
           position: absolute;
-          left: -100%; /* Прячем меню за экран */
+          left: -100%;
           height: 100%;
           box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
           max-width: 85vw;
@@ -215,7 +249,6 @@
           display: block;
         }
 
-        /* На мобилках легенда по умолчанию свёрнута */
         .legend-content {
           display: none;
         }
@@ -232,11 +265,14 @@
         .legend.collapsed .arrow {
           transform: rotate(180deg);
         }
+
+        #custom-tooltip {
+          font-size: 12px;
+        }
       }
     </style>
   </head>
   <body>
-    <!-- Кнопка бургер поверх графа для мобилок -->
     <button id="toggle-sidebar">☰ Настройки</button>
 
     <div id="sidebar">
@@ -269,6 +305,8 @@
 
     <div id="graph-container">
       <div id="network"></div>
+      <div id="custom-tooltip"></div>
+      <!-- Наш тултип -->
 
       <div class="legend" id="legend">
         <div class="legend-header" id="legend-toggle">
@@ -304,7 +342,7 @@
     </div>
 
     <script>
-      // --- Логика Адаптивного интерфейса (Легенда и Сайдбар) ---
+      // --- Логика Адаптивного интерфейса ---
       const sidebar = document.getElementById("sidebar");
       const btnToggleSidebar = document.getElementById("toggle-sidebar");
       const btnCloseSidebar = document.getElementById("close-sidebar");
@@ -312,7 +350,6 @@
       const legend = document.getElementById("legend");
       const legendToggle = document.getElementById("legend-toggle");
 
-      // Если мы на мобильном устройстве при загрузке страницы - сворачиваем легенду
       if (window.innerWidth <= 768) {
         legend.classList.add("collapsed");
       }
@@ -335,7 +372,6 @@
       const statsEl = document.getElementById("stats");
 
       function log(msg) {
-        // Ограничим лог 1000 символами, чтобы не вешать браузер при огромных лорбуках
         if (logEl.textContent.length > 5000) {
           logEl.textContent = logEl.textContent.slice(-2500);
         }
@@ -347,7 +383,6 @@
         return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       }
 
-      // Обработчик выбора файла: сразу пишем в лог названия выбранных лорбуков
       fileInput.addEventListener("change", (e) => {
         const files = e.target.files;
         processBtn.disabled = files.length === 0;
@@ -367,7 +402,6 @@
         logEl.textContent = "Начало обработки...";
         statsEl.innerHTML = "";
 
-        // Закрываем боковое меню на мобилках после нажатия на кнопку "Построить граф"
         if (window.innerWidth <= 768) {
           sidebar.classList.remove("active");
         }
@@ -444,7 +478,6 @@
               : globalCaseMatch;
 
           let searchPatterns = [];
-          // Регулярка для определения regex паттернов вида /.../g
           let isRegexFormat = /^\/(.+)\/([a-z]*)$/;
 
           for (let k of keys) {
@@ -533,19 +566,29 @@
               ? 25
               : 20;
 
-          let tooltip = `<b>${comment}</b><hr>
-                <b>Источник:</b> ${entry.source_file}<br>
-                <b>Ключи:</b> ${keys.join(", ") || "Нет"}<br>
-                <div style="max-width:300px; white-space:pre-wrap; font-size:11px; margin-top:5px;">${content.substring(
-                  0,
-                  300
-                )}...</div>`;
+          // Обрабатываем content: меняем \n на <br> и обрезаем, если слишком длинный
+          let formattedContent = content.replace(/\n/g, "<br>");
+          if (formattedContent.length > 500) {
+            formattedContent = formattedContent.substring(0, 500) + "...";
+          }
+
+          let customHTML = `
+                <h4>${comment}</h4>
+                <b>Источник:</b> ${entry.source_file}<br><br>
+                <b>Ключевые слова:</b><br>
+                <span style="color: #aaa;">${
+                  keys.join(", ") || "Нет"
+                }</span><br><br>
+                <b>Содержание:</b><br>
+                <div style="color: #ddd; margin-top:5px; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                    ${formattedContent}
+                </div>`;
 
           nodesData.push({
             id: uid,
             label:
               comment.substring(0, 20) + (comment.length > 20 ? "..." : ""),
-            title: tooltip,
+            customTooltip: customHTML,
             shape: shape,
             size: size,
             borderWidth: borderWidth,
@@ -576,7 +619,7 @@
                     to: nodeB.uid,
                     color: "#3498db",
                     arrows: "to",
-                    title: `Ключ '${p.original}' найден в тексте`,
+                    customTooltip: `Ключ <br><b style="color:var(--accent-color)">${p.original}</b><br> из записи A найден в тексте записи B.`,
                   });
                   connectionCount++;
                   break;
@@ -592,7 +635,7 @@
                     to: nodeA.uid,
                     color: "#3498db",
                     arrows: "to",
-                    title: `Ключ '${p.original}' найден в тексте`,
+                    customTooltip: `Ключ <br><b style="color:var(--accent-color)">${p.original}</b><br> из записи B найден в тексте записи A.`,
                   });
                   connectionCount++;
                   break;
@@ -614,7 +657,7 @@
                 color: "#95a5a6",
                 dashes: true,
                 arrows: "to",
-                title: "Общий ключ",
+                customTooltip: "Связь по прямому <b>совпадению</b> ключей.",
               });
               connectionCount++;
             }
@@ -627,14 +670,65 @@
         drawNetwork(nodesData, edgesData);
       }
 
+      // --- Отрисовка в Vis.js ---
+      let networkInstance = null; // Глобально сохраняем канвас
+      let lastMouseX = 0;
+      let lastMouseY = 0;
+
+      // Глобальное отслеживание мыши (надежнее, чем внутри канваса)
+      document.addEventListener("mousemove", (e) => {
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        updateTooltipPosition();
+      });
+
+      function updateTooltipPosition() {
+        const tooltip = document.getElementById("custom-tooltip");
+        if (tooltip.style.display !== "block") return;
+
+        // Временно делаем прозрачным для корректного замера размеров
+        tooltip.style.visibility = "hidden";
+
+        const tooltipWidth = tooltip.offsetWidth;
+        const tooltipHeight = tooltip.offsetHeight;
+
+        const offset = 15; // Отступ от курсора
+        let left = lastMouseX + offset;
+        let top = lastMouseY + offset;
+
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        // Если вылезает справа - перемещаем влево от курсора
+        if (left + tooltipWidth > windowWidth - 10) {
+          left = lastMouseX - tooltipWidth - offset;
+          // Если слишком велико и слева не влезает - прибиваем к левому краю
+          if (left < 10) left = 10;
+        }
+
+        // Если вылезает снизу - перемещаем вверх от курсора
+        if (top + tooltipHeight > windowHeight - 10) {
+          top = lastMouseY - tooltipHeight - offset;
+          // Если сверху не влезает - прибиваем к верху
+          if (top < 10) top = 10;
+        }
+
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
+        tooltip.style.visibility = "visible";
+      }
+
       function drawNetwork(nodesRaw, edgesRaw) {
         log("Отрисовка графа...");
         const container = document.getElementById("network");
 
-        const data = {
-          nodes: new vis.DataSet(nodesRaw),
-          edges: new vis.DataSet(edgesRaw),
-        };
+        if (networkInstance !== null) {
+          networkInstance.destroy();
+        }
+
+        const nodesDataSet = new vis.DataSet(nodesRaw);
+        const edgesDataSet = new vis.DataSet(edgesRaw);
+        const data = { nodes: nodesDataSet, edges: edgesDataSet };
 
         const options = {
           nodes: {
@@ -657,12 +751,58 @@
           },
           interaction: {
             hover: true,
-            tooltipDelay: 100,
+            tooltipDelay: 50,
             multiselect: true,
           },
         };
 
-        new vis.Network(container, data, options);
+        networkInstance = new vis.Network(container, data, options);
+        const tooltip = document.getElementById("custom-tooltip");
+
+        // Показ тултипа для Узлов
+        networkInstance.on("hoverNode", function (params) {
+          const nodeData = nodesDataSet.get(params.node);
+          if (nodeData && nodeData.customTooltip) {
+            // Если мы на мобилке (или мышка не сдвинулась), vis.js возвращает координаты в event
+            if (params.event && params.event.clientX) {
+              lastMouseX = params.event.clientX;
+              lastMouseY = params.event.clientY;
+            }
+            tooltip.innerHTML = nodeData.customTooltip;
+            tooltip.style.display = "block";
+            updateTooltipPosition();
+          }
+        });
+
+        // Показ тултипа для Связей (Граней)
+        networkInstance.on("hoverEdge", function (params) {
+          const edgeData = edgesDataSet.get(params.edge);
+          if (edgeData && edgeData.customTooltip) {
+            if (params.event && params.event.clientX) {
+              lastMouseX = params.event.clientX;
+              lastMouseY = params.event.clientY;
+            }
+            tooltip.innerHTML = edgeData.customTooltip;
+            tooltip.style.display = "block";
+            updateTooltipPosition();
+          }
+        });
+
+        // Скрытие тултипа
+        networkInstance.on("blurNode", function () {
+          tooltip.style.display = "none";
+        });
+        networkInstance.on("blurEdge", function () {
+          tooltip.style.display = "none";
+        });
+
+        // Для мобилок - скрытие по клику на пустое место
+        networkInstance.on("click", function (params) {
+          if (params.nodes.length === 0 && params.edges.length === 0) {
+            tooltip.style.display = "none";
+          }
+        });
+
         log("Граф успешно отрисован!");
       }
     </script>
