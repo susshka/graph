@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Анализатор Лорбуков (Web)</title>
+    <!-- Подключаем библиотеку Vis-Network -->
+    <script
+      type="text/javascript"
+      src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
+    ></script>
+    <style>
+      :root {
+        --bg-color: #222222;
+        --panel-bg: rgba(0, 0, 0, 0.8);
+        --text-color: #ffffff;
+        --accent-color: #3498db;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        overflow: hidden;
+        display: flex;
+        height: 100vh;
+      }
+      #sidebar {
+        width: 350px;
+        background: #111;
+        padding: 20px;
+        box-sizing: border-box;
+        overflow-y: auto;
+        border-right: 1px solid #333;
+        z-index: 10;
+      }
+      #graph-container {
+        flex-grow: 1;
+        position: relative;
+      }
+      #network {
+        width: 100%;
+        height: 100%;
+      }
+      .control-group {
+        margin-bottom: 20px;
+        background: #222;
+        padding: 15px;
+        border-radius: 8px;
+      }
+      .control-group h3 {
+        margin-top: 0;
+        font-size: 16px;
+        border-bottom: 1px solid #444;
+        padding-bottom: 5px;
+      }
+      button,
+      input[type="file"]::file-selector-button {
+        background-color: var(--accent-color);
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+        width: 100%;
+        margin-top: 5px;
+      }
+      button:hover,
+      input[type="file"]::file-selector-button:hover {
+        background-color: #2980b9;
+      }
+      button:disabled {
+        background-color: #555;
+        cursor: not-allowed;
+      }
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+      #log {
+        font-family: monospace;
+        font-size: 12px;
+        color: #ccc;
+        background: #000;
+        padding: 10px;
+        border-radius: 5px;
+        height: 150px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      #stats {
+        margin-top: 15px;
+        font-size: 13px;
+        color: #aaa;
+      }
+      .legend {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: var(--panel-bg);
+        padding: 15px;
+        border-radius: 8px;
+        font-size: 13px;
+        border: 1px solid #444;
+        pointer-events: none;
+        z-index: 1000;
+      }
+      .file-input-wrapper {
+        margin-bottom: 10px;
+      }
+      input[type="file"] {
+        width: 100%;
+        color: #aaa;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="sidebar">
+      <h2 style="margin-top: 0">Анализатор Лорбуков</h2>
+
+      <div class="control-group">
+        <h3>Глобальные настройки</h3>
+        <label>
+          <input type="checkbox" id="globalMatchWhole" /> Искать только целые
+          слова
+        </label>
+        <label>
+          <input type="checkbox" id="globalCaseMatch" /> Учитывать регистр
+        </label>
+      </div>
+
+      <div class="control-group">
+        <h3>Загрузка JSON-файлов</h3>
+        <div class="file-input-wrapper">
+          <input type="file" id="fileInput" multiple accept=".json" />
+        </div>
+        <button id="processBtn" disabled>Построить граф</button>
+      </div>
+
+      <div class="control-group">
+        <h3>Журнал событий</h3>
+        <div id="log">Ожидание файлов...</div>
+        <div id="stats"></div>
+      </div>
+    </div>
+
+    <div id="graph-container">
+      <div id="network"></div>
+      <div class="legend">
+        <b>Основные статусы:</b><br />
+        <span style="color: #2ecc71">●</span> Обычная запись<br />
+        <span style="color: #3498db">■</span> Постоянная запись<br />
+        <span style="color: #9b59b6">●</span> Векторизованная<br /><br />
+        <b>Формы и флаги:</b><br />
+        <span style="color: #e74c3c">▲</span> Нерекурсивная (простая голова)<br />
+        <span style="color: #2ecc71">◆</span> Селективная обычная<br />
+        <span style="color: #3498db">◆</span> Селективная постоянная<br />
+        <span style="color: #9b59b6">◆</span> Селективная векторизованная<br /><br />
+        <b>Комбинации (обводка + тень):</b><br />
+        <span style="border: 2px solid #e74c3c; box-shadow: 0 0 5px #f1c40f"
+          >◆</span
+        >
+        Селективная нерекурсивная<br />
+        <span style="border: 2px solid #e74c3c">■</span> Постоянная
+        нерекурсивная<br />
+        <span style="border: 2px solid #e74c3c">●</span> Векторизованная
+        нерекурсивная<br /><br />
+        <b>Связи:</b><br />
+        <span style="color: #3498db">→</span> Ключ найден в содержании<br />
+        <span style="color: #95a5a6">---→</span> Общий ключ
+      </div>
+    </div>
+
+    <script>
+      const fileInput = document.getElementById("fileInput");
+      const processBtn = document.getElementById("processBtn");
+      const logEl = document.getElementById("log");
+      const statsEl = document.getElementById("stats");
+      let loadedLorebooks = [];
+
+      // --- Вспомогательные функции ---
+      function log(msg) {
+        logEl.textContent += `\n${msg}`;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // Экранирование спецсимволов для регулярок
+      }
+
+      // --- Обработка файлов ---
+      fileInput.addEventListener("change", (e) => {
+        processBtn.disabled = e.target.files.length === 0;
+      });
+
+      processBtn.addEventListener("click", async () => {
+        logEl.textContent = "Начало обработки...";
+        statsEl.innerHTML = "";
+        loadedLorebooks = [];
+        const files = fileInput.files;
+
+        if (files.length === 0) return;
+        processBtn.disabled = true;
+
+        let currentUid = 0;
+        let allEntries = {};
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          try {
+            const text = await file.text();
+            const json = JSON.parse(text);
+
+            if (!json.entries) {
+              log(`⚠️ Файл ${file.name} пропущен: нет 'entries'`);
+              continue;
+            }
+
+            let count = 0;
+            for (let key in json.entries) {
+              let entry = json.entries[key];
+              entry.uid = currentUid;
+              entry.source_file = file.name;
+              entry.excludeRecursion = entry.excludeRecursion ?? false;
+              entry.matchWholeWords = entry.matchWholeWords ?? null;
+              entry.caseSensitive = entry.caseSensitive ?? null;
+              entry.constant = entry.constant ?? false;
+              entry.vectorized = entry.vectorized ?? false;
+              entry.selective = entry.selective ?? false;
+
+              allEntries[currentUid] = entry;
+              currentUid++;
+              count++;
+            }
+            log(`✓ Загружен: ${file.name} (${count} записей)`);
+          } catch (err) {
+            log(`❌ Ошибка чтения ${file.name}: ${err.message}`);
+          }
+        }
+
+        buildGraph(allEntries);
+        processBtn.disabled = false;
+      });
+
+      // --- Логика построения графа ---
+      function buildGraph(entriesMap) {
+        log("Подготовка ключей и параметров...");
+        const globalMatchWhole =
+          document.getElementById("globalMatchWhole").checked;
+        const globalCaseMatch =
+          document.getElementById("globalCaseMatch").checked;
+
+        let nodesData = [];
+        let edgesData = [];
+        let parsedEntries = [];
+
+        // Шаг 1: Формирование узлов и парсинг ключей
+        for (let uid in entriesMap) {
+          let entry = entriesMap[uid];
+          let comment = entry.comment || `Запись ${uid}`;
+          let content = entry.content || "";
+          let keys = [...(entry.key || []), ...(entry.keysecondary || [])];
+
+          let matchWhole =
+            entry.matchWholeWords !== null
+              ? entry.matchWholeWords
+              : globalMatchWhole;
+          let caseSens =
+            entry.caseSensitive !== null
+              ? entry.caseSensitive
+              : globalCaseMatch;
+
+          // Парсинг регулярных выражений
+          let searchPatterns = [];
+          let isRegexFormat = /^\/(.+)\/([a-z]*)$/;
+
+          for (let k of keys) {
+            if (!k) continue;
+
+            let match = k.match(isRegexFormat);
+            if (match) {
+              let pattern = match[1];
+              let flagsStr = match[2];
+
+              if (!caseSens && !flagsStr.includes("i")) flagsStr += "i";
+              if (matchWhole) {
+                if (!pattern.startsWith("\\b")) pattern = "\\b" + pattern;
+                if (!pattern.endsWith("\\b")) pattern = pattern + "\\b";
+              }
+              try {
+                searchPatterns.push({
+                  original: k,
+                  regex: new RegExp(pattern, flagsStr),
+                });
+              } catch (e) {
+                log(`Ошибка RegExp [${k}]: ${e.message}`);
+              }
+            } else {
+              let pattern = escapeRegExp(k);
+              if (matchWhole) pattern = "\\b" + pattern + "\\b";
+              let flagsStr = caseSens ? "g" : "gi";
+              try {
+                searchPatterns.push({
+                  original: k,
+                  regex: new RegExp(pattern, flagsStr),
+                });
+              } catch (e) {
+                log(`Ошибка обычного ключа [${k}]: ${e.message}`);
+              }
+            }
+          }
+
+          parsedEntries.push({
+            uid,
+            comment,
+            content,
+            searchPatterns,
+            excludeRecursion: entry.excludeRecursion,
+            allKeysSet: new Set(keys),
+          });
+
+          // Настройка визуализации ноды
+          let baseColor = entry.constant
+            ? "#3498db"
+            : entry.vectorized
+            ? "#9b59b6"
+            : "#2ecc71";
+          let shape = "dot";
+
+          if (entry.constant) shape = "square";
+          else if (entry.selective) shape = "diamond";
+
+          if (
+            entry.excludeRecursion &&
+            !entry.constant &&
+            !entry.vectorized &&
+            !entry.selective
+          ) {
+            shape = "triangle";
+            baseColor = "#e74c3c";
+          }
+
+          let borderColor = baseColor;
+          let borderWidth = 2;
+
+          if (entry.excludeRecursion && shape !== "triangle") {
+            borderColor = "#e74c3c";
+            borderWidth = 4;
+          }
+
+          let shadow = false;
+          if (entry.selective) {
+            shadow = { enabled: true, color: "#f1c40f", size: 10, x: 0, y: 0 };
+          }
+
+          let size =
+            entry.excludeRecursion || entry.constant
+              ? 30
+              : entry.vectorized || entry.selective
+              ? 25
+              : 20;
+
+          // Тултип (Всплывающая подсказка)
+          let tooltip = `<b>${comment}</b><hr>
+                <b>Источник:</b> ${entry.source_file}<br>
+                <b>Ключи:</b> ${keys.join(", ") || "Нет"}<br>
+                <div style="max-width:300px; white-space:pre-wrap; font-size:11px; margin-top:5px;">${content.substring(
+                  0,
+                  300
+                )}...</div>`;
+
+          nodesData.push({
+            id: uid,
+            label:
+              comment.substring(0, 20) + (comment.length > 20 ? "..." : ""),
+            title: tooltip,
+            shape: shape,
+            size: size,
+            borderWidth: borderWidth,
+            borderWidthSelected: borderWidth + 2,
+            color: {
+              background: baseColor,
+              border: borderColor,
+              highlight: { background: baseColor, border: borderColor },
+              hover: { background: baseColor, border: borderColor },
+            },
+            shadow: shadow,
+          });
+        }
+
+        log("Анализ связей...");
+        let connectionCount = 0;
+
+        // Шаг 2: Поиск связей
+        for (let i = 0; i < parsedEntries.length; i++) {
+          for (let j = i + 1; j < parsedEntries.length; j++) {
+            let nodeA = parsedEntries[i];
+            let nodeB = parsedEntries[j];
+
+            // Ключи А в контенте Б
+            if (!nodeA.excludeRecursion) {
+              for (let p of nodeA.searchPatterns) {
+                if (p.regex.test(nodeB.content)) {
+                  edgesData.push({
+                    from: nodeA.uid,
+                    to: nodeB.uid,
+                    color: "#3498db",
+                    arrows: "to",
+                    title: `Ключ '${p.original}' найден в тексте`,
+                  });
+                  connectionCount++;
+                  break; // Достаточно одной связи такого типа между нодами
+                }
+              }
+            }
+
+            // Ключи Б в контенте А
+            if (!nodeB.excludeRecursion) {
+              for (let p of nodeB.searchPatterns) {
+                if (p.regex.test(nodeA.content)) {
+                  edgesData.push({
+                    from: nodeB.uid,
+                    to: nodeA.uid,
+                    color: "#3498db",
+                    arrows: "to",
+                    title: `Ключ '${p.original}' найден в тексте`,
+                  });
+                  connectionCount++;
+                  break;
+                }
+              }
+            }
+
+            // Общие ключи (натуральное совпадение)
+            let commonKeyFound = false;
+            for (let k of nodeA.allKeysSet) {
+              if (k && nodeB.allKeysSet.has(k)) {
+                commonKeyFound = true;
+                break;
+              }
+            }
+            if (commonKeyFound) {
+              edgesData.push({
+                from: nodeA.uid,
+                to: nodeB.uid,
+                color: "#95a5a6",
+                dashes: true,
+                arrows: "to",
+                title: "Общий ключ",
+              });
+              connectionCount++;
+            }
+          }
+        }
+
+        log(`Построено узлов: ${nodesData.length}`);
+        log(`Построено связей: ${connectionCount}`);
+        statsEl.innerHTML = `Узлов: <b>${nodesData.length}</b><br>Связей: <b>${connectionCount}</b>`;
+
+        // Шаг 3: Отрисовка
+        drawNetwork(nodesData, edgesData);
+      }
+
+      function drawNetwork(nodesRaw, edgesRaw) {
+        log("Отрисовка графа...");
+        const container = document.getElementById("network");
+
+        const data = {
+          nodes: new vis.DataSet(nodesRaw),
+          edges: new vis.DataSet(edgesRaw),
+        };
+
+        const options = {
+          nodes: {
+            font: { size: 14, color: "#ffffff", face: "Arial" },
+          },
+          edges: {
+            smooth: { type: "dynamic", roundness: 0.5 },
+            selectionWidth: 3,
+          },
+          physics: {
+            enabled: true,
+            barnesHut: {
+              gravitationalConstant: -1500,
+              centralGravity: 0.2,
+              springLength: 150,
+              springConstant: 0.05,
+              damping: 0.09,
+            },
+            stabilization: { iterations: 150 },
+          },
+          interaction: {
+            hover: true,
+            tooltipDelay: 100,
+            multiselect: true,
+          },
+        };
+
+        new vis.Network(container, data, options);
+        log("Граф успешно отрисован!");
+      }
+    </script>
+  </body>
+</html>
