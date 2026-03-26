@@ -12,7 +12,7 @@
     <style>
       :root {
         --bg-color: #222222;
-        --panel-bg: rgba(0, 0, 0, 0.8);
+        --panel-bg: rgba(20, 20, 20, 0.9);
         --text-color: #ffffff;
         --accent-color: #3498db;
       }
@@ -26,6 +26,8 @@
         display: flex;
         height: 100vh;
       }
+
+      /* --- Меню настроек --- */
       #sidebar {
         width: 350px;
         background: #111;
@@ -33,16 +35,25 @@
         box-sizing: border-box;
         overflow-y: auto;
         border-right: 1px solid #333;
-        z-index: 10;
+        z-index: 2000;
+        transition: left 0.3s ease;
       }
-      #graph-container {
-        flex-grow: 1;
-        position: relative;
+
+      #close-sidebar {
+        display: none;
+        float: right;
+        background: none;
+        border: none;
+        color: #ccc;
+        font-size: 24px;
+        cursor: pointer;
+        margin-top: -5px;
+        padding: 0;
       }
-      #network {
-        width: 100%;
-        height: 100%;
+      #close-sidebar:hover {
+        color: white;
       }
+
       .control-group {
         margin-bottom: 20px;
         background: #222;
@@ -55,6 +66,8 @@
         border-bottom: 1px solid #444;
         padding-bottom: 5px;
       }
+
+      /* Кнопки и инпуты */
       button,
       input[type="file"]::file-selector-button {
         background-color: var(--accent-color);
@@ -75,11 +88,18 @@
         background-color: #555;
         cursor: not-allowed;
       }
+
       label {
         display: block;
         margin-bottom: 8px;
         font-size: 14px;
       }
+      input[type="file"] {
+        width: 100%;
+        color: #aaa;
+        margin-bottom: 10px;
+      }
+
       #log {
         font-family: monospace;
         font-size: 12px;
@@ -96,30 +116,129 @@
         font-size: 13px;
         color: #aaa;
       }
+
+      /* --- Область графа --- */
+      #graph-container {
+        flex-grow: 1;
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      #network {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Кнопка открытия меню (для мобилок) */
+      #toggle-sidebar {
+        display: none;
+        position: absolute;
+        top: 15px;
+        left: 15px;
+        background: var(--panel-bg);
+        color: white;
+        border: 1px solid #444;
+        padding: 10px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        z-index: 1000;
+        font-size: 14px;
+        font-weight: bold;
+      }
+
+      /* --- Легенда --- */
       .legend {
         position: absolute;
-        top: 20px;
-        right: 20px;
+        top: 15px;
+        right: 15px;
         background: var(--panel-bg);
-        padding: 15px;
         border-radius: 8px;
-        font-size: 13px;
         border: 1px solid #444;
-        pointer-events: none;
         z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        max-height: 90vh;
+        width: 250px;
       }
-      .file-input-wrapper {
-        margin-bottom: 10px;
+
+      .legend-header {
+        padding: 12px 15px;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        user-select: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid transparent;
       }
-      input[type="file"] {
-        width: 100%;
-        color: #aaa;
+
+      .legend-content {
+        padding: 0 15px 15px 15px;
+        font-size: 12px;
+        overflow-y: auto;
+        display: block; /* Раскрыта на ПК */
+      }
+
+      .legend.collapsed .legend-content {
+        display: none;
+      }
+      .legend.collapsed .legend-header {
+        border-bottom: none;
+      }
+      .legend .arrow {
+        transition: transform 0.2s;
+      }
+      .legend.collapsed .arrow {
+        transform: rotate(180deg);
+      }
+
+      /* --- АДАПТИВНОСТЬ (Смартфоны и планшеты) --- */
+      @media (max-width: 768px) {
+        #sidebar {
+          position: absolute;
+          left: -100%; /* Прячем меню за экран */
+          height: 100%;
+          box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
+          max-width: 85vw;
+        }
+        #sidebar.active {
+          left: 0;
+        }
+        #close-sidebar {
+          display: block;
+        }
+        #toggle-sidebar {
+          display: block;
+        }
+
+        /* На мобилках легенда по умолчанию свёрнута */
+        .legend-content {
+          display: none;
+        }
+        .legend {
+          width: auto;
+          min-width: 150px;
+        }
+        .legend:not(.collapsed) .legend-content {
+          display: block;
+        }
+        .legend:not(.collapsed) .arrow {
+          transform: rotate(0deg);
+        }
+        .legend.collapsed .arrow {
+          transform: rotate(180deg);
+        }
       }
     </style>
   </head>
   <body>
+    <!-- Кнопка бургер поверх графа для мобилок -->
+    <button id="toggle-sidebar">☰ Настройки</button>
+
     <div id="sidebar">
-      <h2 style="margin-top: 0">Анализатор Лорбуков</h2>
+      <button id="close-sidebar">✖</button>
+      <h2 style="margin-top: 0">Анализатор</h2>
 
       <div class="control-group">
         <h3>Глобальные настройки</h3>
@@ -134,9 +253,7 @@
 
       <div class="control-group">
         <h3>Загрузка JSON-файлов</h3>
-        <div class="file-input-wrapper">
-          <input type="file" id="fileInput" multiple accept=".json" />
-        </div>
+        <input type="file" id="fileInput" multiple accept=".json" />
         <button id="processBtn" disabled>Построить граф</button>
       </div>
 
@@ -149,49 +266,80 @@
 
     <div id="graph-container">
       <div id="network"></div>
-      <div class="legend">
-        <b>Основные статусы:</b><br />
-        <span style="color: #2ecc71">●</span> Обычная запись<br />
-        <span style="color: #3498db">■</span> Постоянная запись<br />
-        <span style="color: #9b59b6">●</span> Векторизованная<br /><br />
-        <b>Формы и флаги:</b><br />
-        <span style="color: #e74c3c">▲</span> Нерекурсивная (простая голова)<br />
-        <span style="color: #2ecc71">◆</span> Селективная обычная<br />
-        <span style="color: #3498db">◆</span> Селективная постоянная<br />
-        <span style="color: #9b59b6">◆</span> Селективная векторизованная<br /><br />
-        <b>Комбинации (обводка + тень):</b><br />
-        <span style="border: 2px solid #e74c3c; box-shadow: 0 0 5px #f1c40f"
-          >◆</span
-        >
-        Селективная нерекурсивная<br />
-        <span style="border: 2px solid #e74c3c">■</span> Постоянная
-        нерекурсивная<br />
-        <span style="border: 2px solid #e74c3c">●</span> Векторизованная
-        нерекурсивная<br /><br />
-        <b>Связи:</b><br />
-        <span style="color: #3498db">→</span> Ключ найден в содержании<br />
-        <span style="color: #95a5a6">---→</span> Общий ключ
+
+      <div class="legend" id="legend">
+        <div class="legend-header" id="legend-toggle">
+          Легенда <span class="arrow">▼</span>
+        </div>
+        <div class="legend-content">
+          <b>Основные статусы:</b><br />
+          <span style="color: #2ecc71">●</span> Обычная запись<br />
+          <span style="color: #3498db">■</span> Постоянная запись<br />
+          <span style="color: #9b59b6">●</span> Векторизованная<br /><br />
+
+          <b>Формы и флаги:</b><br />
+          <span style="color: #e74c3c">▲</span> Нерекурсивная (простая)<br />
+          <span style="color: #2ecc71">◆</span> Селективная обычная<br />
+          <span style="color: #3498db">◆</span> Селективная постоянная<br />
+          <span style="color: #9b59b6">◆</span> Селективная векторизованная<br /><br />
+
+          <b>Комбинации:</b><br />
+          <span style="border: 2px solid #e74c3c; box-shadow: 0 0 5px #f1c40f"
+            >◆</span
+          >
+          Селективная + Нерекурсивная<br />
+          <span style="border: 2px solid #e74c3c">■</span> Постоянная +
+          Нерекурсивная<br />
+          <span style="border: 2px solid #e74c3c">●</span> Векторная +
+          Нерекурсивная<br /><br />
+
+          <b>Связи:</b><br />
+          <span style="color: #3498db">→</span> Ключ найден в тексте<br />
+          <span style="color: #95a5a6">---→</span> Общий ключ
+        </div>
       </div>
     </div>
 
     <script>
+      // --- Логика Адаптивного интерфейса (Легенда и Сайдбар) ---
+      const sidebar = document.getElementById("sidebar");
+      const btnToggleSidebar = document.getElementById("toggle-sidebar");
+      const btnCloseSidebar = document.getElementById("close-sidebar");
+
+      const legend = document.getElementById("legend");
+      const legendToggle = document.getElementById("legend-toggle");
+
+      // Если мы на мобильном устройстве при загрузке страницы - сворачиваем легенду
+      if (window.innerWidth <= 768) {
+        legend.classList.add("collapsed");
+      }
+
+      btnToggleSidebar.addEventListener("click", () => {
+        sidebar.classList.add("active");
+      });
+      btnCloseSidebar.addEventListener("click", () => {
+        sidebar.classList.remove("active");
+      });
+
+      legendToggle.addEventListener("click", () => {
+        legend.classList.toggle("collapsed");
+      });
+
+      // --- Логика приложения ---
       const fileInput = document.getElementById("fileInput");
       const processBtn = document.getElementById("processBtn");
       const logEl = document.getElementById("log");
       const statsEl = document.getElementById("stats");
-      let loadedLorebooks = [];
 
-      // --- Вспомогательные функции ---
       function log(msg) {
         logEl.textContent += `\n${msg}`;
         logEl.scrollTop = logEl.scrollHeight;
       }
 
       function escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // Экранирование спецсимволов для регулярок
+        return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       }
 
-      // --- Обработка файлов ---
       fileInput.addEventListener("change", (e) => {
         processBtn.disabled = e.target.files.length === 0;
       });
@@ -199,9 +347,13 @@
       processBtn.addEventListener("click", async () => {
         logEl.textContent = "Начало обработки...";
         statsEl.innerHTML = "";
-        loadedLorebooks = [];
-        const files = fileInput.files;
 
+        // Закрываем боковое меню на мобилках после нажатия на кнопку "Построить граф"
+        if (window.innerWidth <= 768) {
+          sidebar.classList.remove("active");
+        }
+
+        const files = fileInput.files;
         if (files.length === 0) return;
         processBtn.disabled = true;
 
@@ -257,7 +409,6 @@
         let edgesData = [];
         let parsedEntries = [];
 
-        // Шаг 1: Формирование узлов и парсинг ключей
         for (let uid in entriesMap) {
           let entry = entriesMap[uid];
           let comment = entry.comment || `Запись ${uid}`;
@@ -273,7 +424,6 @@
               ? entry.caseSensitive
               : globalCaseMatch;
 
-          // Парсинг регулярных выражений
           let searchPatterns = [];
           let isRegexFormat = /^\/(.+)\/([a-z]*)$/;
 
@@ -308,7 +458,7 @@
                   regex: new RegExp(pattern, flagsStr),
                 });
               } catch (e) {
-                log(`Ошибка обычного ключа [${k}]: ${e.message}`);
+                log(`Ошибка ключа [${k}]: ${e.message}`);
               }
             }
           }
@@ -363,7 +513,6 @@
               ? 25
               : 20;
 
-          // Тултип (Всплывающая подсказка)
           let tooltip = `<b>${comment}</b><hr>
                 <b>Источник:</b> ${entry.source_file}<br>
                 <b>Ключи:</b> ${keys.join(", ") || "Нет"}<br>
@@ -394,13 +543,11 @@
         log("Анализ связей...");
         let connectionCount = 0;
 
-        // Шаг 2: Поиск связей
         for (let i = 0; i < parsedEntries.length; i++) {
           for (let j = i + 1; j < parsedEntries.length; j++) {
             let nodeA = parsedEntries[i];
             let nodeB = parsedEntries[j];
 
-            // Ключи А в контенте Б
             if (!nodeA.excludeRecursion) {
               for (let p of nodeA.searchPatterns) {
                 if (p.regex.test(nodeB.content)) {
@@ -412,12 +559,11 @@
                     title: `Ключ '${p.original}' найден в тексте`,
                   });
                   connectionCount++;
-                  break; // Достаточно одной связи такого типа между нодами
+                  break;
                 }
               }
             }
 
-            // Ключи Б в контенте А
             if (!nodeB.excludeRecursion) {
               for (let p of nodeB.searchPatterns) {
                 if (p.regex.test(nodeA.content)) {
@@ -434,7 +580,6 @@
               }
             }
 
-            // Общие ключи (натуральное совпадение)
             let commonKeyFound = false;
             for (let k of nodeA.allKeysSet) {
               if (k && nodeB.allKeysSet.has(k)) {
@@ -456,14 +601,13 @@
           }
         }
 
-        log(`Построено узлов: ${nodesData.length}`);
-        log(`Построено связей: ${connectionCount}`);
+        log(`Узлов: ${nodesData.length}, Связей: ${connectionCount}`);
         statsEl.innerHTML = `Узлов: <b>${nodesData.length}</b><br>Связей: <b>${connectionCount}</b>`;
 
-        // Шаг 3: Отрисовка
         drawNetwork(nodesData, edgesData);
       }
 
+      // --- Отрисовка в Vis.js ---
       function drawNetwork(nodesRaw, edgesRaw) {
         log("Отрисовка графа...");
         const container = document.getElementById("network");
@@ -484,8 +628,9 @@
           physics: {
             enabled: true,
             barnesHut: {
-              gravitationalConstant: -1500,
-              centralGravity: 0.2,
+              // ИЗМЕНЕНА ФИЗИКА: Уменьшаем разлет узлов
+              gravitationalConstant: -800, // Было -1500 (чем ближе к 0, тем слабее отталкивание)
+              centralGravity: 0.4, // Было 0.2 (чем выше, тем сильнее тянет в центр)
               springLength: 150,
               springConstant: 0.05,
               damping: 0.09,
