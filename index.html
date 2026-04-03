@@ -92,10 +92,25 @@
         margin-bottom: 8px;
         font-size: 14px;
       }
-      input[type="file"] {
+      input[type="file"],
+      input[type="number"],
+      textarea {
         width: 100%;
+        box-sizing: border-box;
+        background: #111;
+        color: #eee;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 5px;
+      }
+      input[type="file"] {
+        border: none;
+        padding: 0;
         color: #aaa;
         margin-bottom: 10px;
+      }
+      textarea {
+        resize: vertical;
       }
 
       #log {
@@ -272,6 +287,46 @@
       <h2 style="margin-top: 0">Анализатор</h2>
 
       <div class="control-group">
+        <h3>Анализ по Промту</h3>
+        <label>
+          Текст промта:
+          <textarea
+            id="promptText"
+            rows="4"
+            placeholder="Введите текст, как в игре..."
+          ></textarea>
+        </label>
+        <label
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+          "
+        >
+          <span>Глубина рекурсии (0=∞):</span>
+          <input
+            type="number"
+            id="maxDepth"
+            min="0"
+            placeholder="Откл."
+            style="width: 70px"
+          />
+        </label>
+        <div
+          style="
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 5px;
+            line-height: 1.3;
+          "
+        >
+          Оставьте поле глубины <b>пустым</b>, чтобы использовать
+          <b>Классический режим</b> (связываются все записи со всеми).
+        </div>
+      </div>
+
+      <div class="control-group">
         <h3>Глобальные настройки</h3>
         <label>
           <input type="checkbox" id="globalMatchWhole" /> Искать только целые
@@ -307,26 +362,16 @@
           <b>Основные статусы:</b><br />
           <span style="color: #2ecc71">●</span> Обычная запись<br />
           <span style="color: #3498db">■</span> Постоянная запись<br />
-          <span style="color: #9b59b6">●</span> Векторизованная<br /><br />
+          <span style="color: #9b59b6">●</span> Векторизованная<br />
+          <span style="color: #f39c12">★</span> Узел ПРОМТА<br /><br />
 
           <b>Формы и флаги:</b><br />
-          <span style="color: #e74c3c">▲</span> Нерекурсивная (простая)<br />
-          <span style="color: #2ecc71">◆</span> Селективная обычная<br />
-          <span style="color: #3498db">◆</span> Селективная постоянная<br />
-          <span style="color: #9b59b6">◆</span> Селективная векторизованная<br /><br />
+          <span style="color: #e74c3c">▲</span> Только Промт (exclude)<br />
+          <span style="color: #2ecc71">◆</span> Селективная обычная<br /><br />
 
-          <b>Комбинации:</b><br />
-          <span style="border: 2px solid #e74c3c; box-shadow: 0 0 5px #f1c40f"
-            >◆</span
-          >
-          Селективная + Нерекурсивная<br />
-          <span style="border: 2px solid #e74c3c">■</span> Постоянная +
-          Нерекурсивная<br />
-          <span style="border: 2px solid #e74c3c">●</span> Векторная +
-          Нерекурсивная<br /><br />
-
-          <b>Связи:</b><br />
-          <span style="color: #3498db">→</span> Ключ найден в тексте<br />
+          <b>Связи (Режим Промта):</b><br />
+          <span style="color: #f39c12">→</span> Вызов из Промта/Текста<br />
+          <span style="color: #3498db">→</span> Ключ найден в контенте<br />
           <span style="color: #95a5a6">---→</span> Общий ключ
         </div>
       </div>
@@ -368,12 +413,10 @@
         logEl.scrollTop = logEl.scrollHeight;
       }
 
-      // Экранирование для regex
       function escapeRegExp(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       }
 
-      // Экранирование HTML, чтобы теги < > & " ' не ломали подсказки
       function escapeHTML(str) {
         if (str === null || str === undefined) return "";
         return String(str)
@@ -381,7 +424,7 @@
           .replace(/</g, "&" + "lt;")
           .replace(/>/g, "&" + "gt;")
           .replace(/"/g, "&" + "quot;")
-          .replace(/'/g, "&" + "#39;");
+          .replace(/\'/g, "&" + "#39;");
       }
 
       fileInput.addEventListener("change", (e) => {
@@ -430,7 +473,12 @@
               let entry = json.entries[key];
               entry.uid = currentUid;
               entry.source_file = file.name;
+
               entry.excludeRecursion = entry.excludeRecursion ?? false;
+              entry.preventRecursion = entry.preventRecursion ?? false;
+              entry.delayUntilRecursive =
+                entry.delayUntilRecursive ?? entry.delayUntilRecursion ?? false;
+
               entry.matchWholeWords = entry.matchWholeWords ?? null;
               entry.caseSensitive = entry.caseSensitive ?? null;
               entry.constant = entry.constant ?? false;
@@ -447,25 +495,15 @@
           }
         }
 
-        buildGraph(allEntries);
-        processBtn.disabled = false;
-      });
-
-      function buildGraph(entriesMap) {
-        log("Подготовка ключей и параметров...");
         const globalMatchWhole =
           document.getElementById("globalMatchWhole").checked;
         const globalCaseMatch =
           document.getElementById("globalCaseMatch").checked;
-
-        let nodesData = [];
-        let edgesData = [];
         let parsedEntries = [];
 
-        for (let uid in entriesMap) {
-          let entry = entriesMap[uid];
-          let comment = entry.comment || `Запись ${uid}`;
-          let content = entry.content || "";
+        log("Подготовка параметров...");
+        for (let uid in allEntries) {
+          let entry = allEntries[uid];
           let keys = [...(entry.key || []), ...(entry.keysecondary || [])];
 
           let matchWhole =
@@ -482,7 +520,6 @@
 
           for (let k of keys) {
             if (!k) continue;
-
             let match = k.match(isRegexFormat);
             if (match) {
               let pattern = match[1];
@@ -517,102 +554,145 @@
           }
 
           parsedEntries.push({
-            uid,
-            comment,
-            content,
+            ...entry,
             searchPatterns,
-            excludeRecursion: entry.excludeRecursion,
             allKeysSet: new Set(keys),
-          });
-
-          let baseColor = entry.constant
-            ? "#3498db"
-            : entry.vectorized
-            ? "#9b59b6"
-            : "#2ecc71";
-          let shape = "dot";
-
-          if (entry.constant) shape = "square";
-          else if (entry.selective) shape = "diamond";
-
-          if (
-            entry.excludeRecursion &&
-            !entry.constant &&
-            !entry.vectorized &&
-            !entry.selective
-          ) {
-            shape = "triangle";
-            baseColor = "#e74c3c";
-          }
-
-          let borderColor = baseColor;
-          let borderWidth = 2;
-
-          if (entry.excludeRecursion && shape !== "triangle") {
-            borderColor = "#e74c3c";
-            borderWidth = 4;
-          }
-
-          let shadow = false;
-          if (entry.selective) {
-            shadow = { enabled: true, color: "#f1c40f", size: 10, x: 0, y: 0 };
-          }
-
-          let size =
-            entry.excludeRecursion || entry.constant
-              ? 30
-              : entry.vectorized || entry.selective
-              ? 25
-              : 20;
-
-          // Экранируем ключи и текст
-          let safeKeysText = keys.map((k) => escapeHTML(k)).join(", ") || "Нет";
-
-          let safeContent = escapeHTML(content);
-          safeContent = safeContent.replace(/\n/g, "<br>"); // Превращаем энтеры в HTML-переносы
-          if (safeContent.length > 500) {
-            safeContent = safeContent.substring(0, 500) + "...";
-          }
-
-          // Формируем HTML для нашего кастомного окошка
-          let customHTML = `
-                  <h4>${escapeHTML(comment)}</h4>
-                  <b>Источник:</b> ${escapeHTML(entry.source_file)}<br><br>
-                  <b>Ключевые слова:</b><br>
-                  <span style="color: #aaa;">${safeKeysText}</span><br><br>
-                  <b>Содержание:</b><br>
-                  <div style="color: #ddd; margin-top:5px; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px;">
-                      ${safeContent}
-                  </div>`;
-
-          nodesData.push({
-            id: uid,
-            label:
-              comment.substring(0, 20) + (comment.length > 20 ? "..." : ""),
-            customTooltip: customHTML,
-            shape: shape,
-            size: size,
-            borderWidth: borderWidth,
-            borderWidthSelected: borderWidth + 2,
-            color: {
-              background: baseColor,
-              border: borderColor,
-              highlight: { background: baseColor, border: borderColor },
-              hover: { background: baseColor, border: borderColor },
-            },
-            shadow: shadow,
           });
         }
 
-        log("Анализ связей...");
-        let connectionCount = 0;
+        let maxDepthStr = document.getElementById("maxDepth").value.trim();
 
+        if (maxDepthStr !== "") {
+          let maxDepth = parseInt(maxDepthStr, 10);
+          if (isNaN(maxDepth) || maxDepth < 0) maxDepth = 0;
+
+          let promptText = document.getElementById("promptText").value.trim();
+          if (promptText === "") {
+            log(
+              "❌ Промт пуст! Введите текст промта или очистите поле глубины."
+            );
+            statsEl.innerHTML =
+              "<b style='color:#e74c3c'>Ошибка: Промт пуст</b>";
+            processBtn.disabled = false;
+            return;
+          }
+          log(
+            `Запуск симуляции Промта (Макс. глубина: ${
+              maxDepth === 0 ? "Бесконечно" : maxDepth
+            })...`
+          );
+          buildGraphPromptMode(parsedEntries, promptText, maxDepth);
+        } else {
+          log("Запуск классического режима (все со всеми)...");
+          buildGraphClassicMode(parsedEntries);
+        }
+
+        processBtn.disabled = false;
+      });
+
+      function createVisNode(entry) {
+        let comment = entry.comment || `Запись ${entry.uid}`;
+        let content = entry.content || "";
+        let keys = [...(entry.key || []), ...(entry.keysecondary || [])];
+
+        let baseColor = entry.constant
+          ? "#3498db"
+          : entry.vectorized
+          ? "#9b59b6"
+          : "#2ecc71";
+        let shape = "dot";
+
+        if (entry.constant) shape = "square";
+        else if (entry.selective) shape = "diamond";
+
+        if (
+          entry.excludeRecursion &&
+          !entry.constant &&
+          !entry.vectorized &&
+          !entry.selective
+        ) {
+          shape = "triangle";
+          baseColor = "#e74c3c";
+        }
+
+        let borderColor = baseColor;
+        let borderWidth = 2;
+
+        if (entry.excludeRecursion && shape !== "triangle") {
+          borderColor = "#e74c3c";
+          borderWidth = 4;
+        }
+
+        let shadow = false;
+        if (entry.selective) {
+          shadow = { enabled: true, color: "#f1c40f", size: 10, x: 0, y: 0 };
+        }
+
+        let size =
+          entry.excludeRecursion || entry.constant
+            ? 30
+            : entry.vectorized || entry.selective
+            ? 25
+            : 20;
+
+        let safeKeysText = keys.map((k) => escapeHTML(k)).join(", ") || "Нет";
+        let safeContent = escapeHTML(content).replace(/\n/g, "<br>");
+        if (safeContent.length > 500)
+          safeContent = safeContent.substring(0, 500) + "...";
+
+        let flagLabels = [];
+        if (entry.excludeRecursion) flagLabels.push("Не рекурсивная");
+        if (entry.preventRecursion) flagLabels.push("Пресечь рекурсию");
+        if (entry.delayUntilRecursive) flagLabels.push("Отложенная рекурсия");
+        if (flagLabels.length === 0) flagLabels.push("Обычная");
+
+        let customHTML = `
+            <h4>${escapeHTML(comment)}</h4>
+            <b>Флаги:</b> <span style="color:#f1c40f">${flagLabels.join(
+              ", "
+            )}</span><br>
+            <b>Источник:</b> ${escapeHTML(entry.source_file)}<br><br>
+            <b>Ключевые слова:</b><br>
+            <span style="color: #aaa;">${safeKeysText}</span><br><br>
+            <b>Содержание:</b><br>
+            <div style="color: #ddd; margin-top:5px; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                ${safeContent}
+            </div>`;
+
+        return {
+          id: entry.uid,
+          label: comment.substring(0, 20) + (comment.length > 20 ? "..." : ""),
+          customTooltip: customHTML,
+          shape: shape,
+          size: size,
+          borderWidth: borderWidth,
+          borderWidthSelected: borderWidth + 2,
+          color: {
+            background: baseColor,
+            border: borderColor,
+            highlight: { background: baseColor, border: borderColor },
+            hover: { background: baseColor, border: borderColor },
+          },
+          shadow: shadow,
+        };
+      }
+
+      // --- РЕЖИМ 1: КЛАССИЧЕСКИЙ ---
+      function buildGraphClassicMode(parsedEntries) {
+        let nodesData = [];
+        let edgesData = [];
+
+        for (let entry of parsedEntries) {
+          nodesData.push(createVisNode(entry));
+        }
+
+        let connectionCount = 0;
         for (let i = 0; i < parsedEntries.length; i++) {
           for (let j = i + 1; j < parsedEntries.length; j++) {
             let nodeA = parsedEntries[i];
             let nodeB = parsedEntries[j];
 
-            if (!nodeA.excludeRecursion) {
+            if (!nodeA.excludeRecursion && !nodeB.preventRecursion) {
               for (let p of nodeA.searchPatterns) {
                 if (p.regex.test(nodeB.content)) {
                   edgesData.push({
@@ -630,7 +710,7 @@
               }
             }
 
-            if (!nodeB.excludeRecursion) {
+            if (!nodeB.excludeRecursion && !nodeA.preventRecursion) {
               for (let p of nodeB.searchPatterns) {
                 if (p.regex.test(nodeA.content)) {
                   edgesData.push({
@@ -671,10 +751,130 @@
 
         log(`Узлов: ${nodesData.length}, Связей: ${connectionCount}`);
         statsEl.innerHTML = `Узлов: <b>${nodesData.length}</b><br>Связей: <b>${connectionCount}</b>`;
+        drawNetwork(nodesData, edgesData);
+      }
+
+      // --- РЕЖИМ 2: СИМУЛЯЦИЯ ПРОМТА ---
+      function buildGraphPromptMode(parsedEntries, promptText, maxDepth) {
+        let nodesMap = new Map();
+        let edgesData = [];
+        let edgesSet = new Set();
+        let activatedNodeIds = new Set(); // <--- ГЛОБАЛЬНЫЙ БЛОКИРАТОР ПОВТОРНЫХ ВЫЗОВОВ ЗДЕСЬ
+
+        // 1. Создаем корень - Промт
+        const PROMPT_ID = "PROMPT_ROOT";
+        let safePrompt = escapeHTML(promptText).replace(/\n/g, "<br>");
+        nodesMap.set(PROMPT_ID, {
+          id: PROMPT_ID,
+          label: "ТЕКСТ ПРОМТА",
+          shape: "star",
+          size: 40,
+          color: { background: "#f39c12", border: "#e67e22" },
+          customTooltip: `<h4>Главный Промт контекста</h4><hr>
+                <div style="color: #ddd; margin-top:5px; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                    ${safePrompt}
+                </div>`,
+        });
+
+        activatedNodeIds.add(PROMPT_ID); // Промт уже в графе
+
+        // 2. Инициализация переменных рекурсии
+        let currentLevelNodes = [
+          { id: PROMPT_ID, content: promptText, preventRecursion: false },
+        ];
+        let currentDepth = 1;
+        let keepGoing = true;
+        let totalConnections = 0;
+
+        while (keepGoing) {
+          if (maxDepth > 0 && currentDepth > maxDepth) break;
+
+          let nextLevelNodesObj = {};
+          let addedConnectionsInThisStep = 0;
+
+          for (let sourceNode of currentLevelNodes) {
+            if (sourceNode.preventRecursion) continue;
+
+            let isPrompt = sourceNode.id === PROMPT_ID;
+            let parentContent = sourceNode.content;
+
+            for (let targetEntry of parsedEntries) {
+              // ИСПРАВЛЕНИЕ: Если нода уже была вызвана ранее (или мы сканируем её саму), пропускаем!
+              if (activatedNodeIds.has(targetEntry.uid)) continue;
+
+              if (isPrompt) {
+                if (targetEntry.delayUntilRecursive) continue;
+              } else {
+                if (targetEntry.excludeRecursion) continue;
+              }
+
+              for (let p of targetEntry.searchPatterns) {
+                if (p.regex.test(parentContent)) {
+                  let edgeKey = `${sourceNode.id}->${targetEntry.uid}`;
+
+                  if (!edgesSet.has(edgeKey)) {
+                    edgesSet.add(edgeKey);
+                    addedConnectionsInThisStep++;
+                    totalConnections++;
+
+                    let edgeColor = isPrompt ? "#f39c12" : "#3498db";
+                    let desc = isPrompt
+                      ? "найден в тексте Промта (Уровень 1)"
+                      : `найден в контенте Записи_вызова Уровня ${currentDepth}`;
+
+                    edgesData.push({
+                      from: sourceNode.id,
+                      to: targetEntry.uid,
+                      color: edgeColor,
+                      arrows: "to",
+                      customTooltip: `Ключ <br><b style="color:var(--accent-color)">${escapeHTML(
+                        p.original
+                      )}</b><br> ${desc}.`,
+                    });
+
+                    // Добавляем в отрендеренный граф
+                    if (!nodesMap.has(targetEntry.uid)) {
+                      nodesMap.set(targetEntry.uid, createVisNode(targetEntry));
+                    }
+
+                    // Помечаем, что нода УЖЕ В ГРАФЕ - её ключи больше нельзя искать в других текстах этой цепочки!
+                    activatedNodeIds.add(targetEntry.uid);
+
+                    // Добавляем контент ноды в пул для следующего уровня сканирования
+                    if (!nextLevelNodesObj[targetEntry.uid]) {
+                      nextLevelNodesObj[targetEntry.uid] = {
+                        id: targetEntry.uid,
+                        content: targetEntry.content,
+                        preventRecursion: targetEntry.preventRecursion,
+                      };
+                    }
+                  }
+                  break;
+                }
+              }
+            }
+          }
+
+          if (addedConnectionsInThisStep === 0) {
+            keepGoing = false;
+          } else {
+            currentLevelNodes = Object.values(nextLevelNodesObj);
+            currentDepth++;
+          }
+        }
+
+        let nodesData = Array.from(nodesMap.values());
+        log(
+          `Анализ завершен. Вызвано: ${
+            nodesData.length - 1
+          } лор-файлов. Глубина достигла: ${currentDepth - 1}`
+        );
+        statsEl.innerHTML = `Вызвано узлов: <b>${nodesData.length}</b><br>Связей-вызовов: <b>${totalConnections}</b>`;
 
         drawNetwork(nodesData, edgesData);
       }
 
+      // --- Отрисовка в Vis.js ---
       let networkInstance = null;
       let lastMouseX = 0;
       let lastMouseY = 0;
@@ -717,7 +917,6 @@
       }
 
       function drawNetwork(nodesRaw, edgesRaw) {
-        log("Отрисовка графа...");
         const container = document.getElementById("network");
 
         if (networkInstance !== null) {
