@@ -305,12 +305,14 @@
           "
         >
           <span>Глубина рекурсии (0=∞):</span>
+          <!-- Добавлена защита от отрицательных чисел: oninput="if(this.value < 0) this.value = Math.abs(this.value);" -->
           <input
             type="number"
             id="maxDepth"
             min="0"
             placeholder="Откл."
             style="width: 70px"
+            oninput="if(this.value < 0) this.value = Math.abs(this.value);"
           />
         </label>
         <div
@@ -564,7 +566,7 @@
 
         if (maxDepthStr !== "") {
           let maxDepth = parseInt(maxDepthStr, 10);
-          if (isNaN(maxDepth) || maxDepth < 0) maxDepth = 0;
+          if (isNaN(maxDepth) || maxDepth < 0) maxDepth = 0; // Дополнительная подстраховка на уровне JS
 
           let promptText = document.getElementById("promptText").value.trim();
           if (promptText === "") {
@@ -759,9 +761,8 @@
         let nodesMap = new Map();
         let edgesData = [];
         let edgesSet = new Set();
-        let activatedNodeIds = new Set(); // <--- ГЛОБАЛЬНЫЙ БЛОКИРАТОР ПОВТОРНЫХ ВЫЗОВОВ ЗДЕСЬ
+        let activatedNodeIds = new Set();
 
-        // 1. Создаем корень - Промт
         const PROMPT_ID = "PROMPT_ROOT";
         let safePrompt = escapeHTML(promptText).replace(/\n/g, "<br>");
         nodesMap.set(PROMPT_ID, {
@@ -776,9 +777,8 @@
                 </div>`,
         });
 
-        activatedNodeIds.add(PROMPT_ID); // Промт уже в графе
+        activatedNodeIds.add(PROMPT_ID);
 
-        // 2. Инициализация переменных рекурсии
         let currentLevelNodes = [
           { id: PROMPT_ID, content: promptText, preventRecursion: false },
         ];
@@ -799,7 +799,6 @@
             let parentContent = sourceNode.content;
 
             for (let targetEntry of parsedEntries) {
-              // ИСПРАВЛЕНИЕ: Если нода уже была вызвана ранее (или мы сканируем её саму), пропускаем!
               if (activatedNodeIds.has(targetEntry.uid)) continue;
 
               if (isPrompt) {
@@ -832,15 +831,12 @@
                       )}</b><br> ${desc}.`,
                     });
 
-                    // Добавляем в отрендеренный граф
                     if (!nodesMap.has(targetEntry.uid)) {
                       nodesMap.set(targetEntry.uid, createVisNode(targetEntry));
                     }
 
-                    // Помечаем, что нода УЖЕ В ГРАФЕ - её ключи больше нельзя искать в других текстах этой цепочки!
                     activatedNodeIds.add(targetEntry.uid);
 
-                    // Добавляем контент ноды в пул для следующего уровня сканирования
                     if (!nextLevelNodesObj[targetEntry.uid]) {
                       nextLevelNodesObj[targetEntry.uid] = {
                         id: targetEntry.uid,
